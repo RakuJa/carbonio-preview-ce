@@ -18,16 +18,17 @@ install_package()
 {
   pkgName=$1
   pkgVer=$2
-  targetOs=$3
+  pkgRel=$3
+  targetOs=$4
   if [ "$targetOs" = "Rocky" ]; then
     pkgExt=".el8.x86_64.rpm"
     targetRegistry=registry.dev.zextras.com/jenkins/pacur/rocky-8:v1
-    pkgFullName="$pkgName"-"$pkgVer""$pkgExt"
+    pkgFullName="$pkgName"-"$pkgVer""-""$pkgRel""$pkgExt"
     install_command='dnf install /tmp/'"$pkgFullName"
   else
     pkgExt="_amd64.deb"
     targetRegistry=registry.dev.zextras.com/jenkins/pacur/ubuntu-20.04:v1
-    pkgFullName="$pkgName"_"$pkgVer""$pkgExt"
+    pkgFullName="$pkgName"_"$pkgVer""-""$pkgRel""$pkgExt"
     install_command='apt install /tmp/'"$pkgFullName"
   fi
 
@@ -35,10 +36,21 @@ install_package()
   docker run --rm --entrypoint "" --mount type=bind,source="$(pwd)""$mountPath",target=/tmp/"$pkgFullName" $targetRegistry bin/bash -c "$install_command"
 }
 
+set_package_version()
+{
+  vers=$1
+  rel=$2
+  file=$3
+
+  cat "$file" | sed -e "s/\(pkgver=\).*/\1\"$vers\"/" -e "s/\(pkgrel=\).*/\1\"$rel\"/" > "$(pwd)"/../staging/tempPKG
+  mv "$(pwd)"/../staging/tempPKG "$file"
+}
+
 ubuntu=false
 rocky8=false
 install=false
 version=1
+releases=1
 help=false
 no_cleanup=false
 while getopts urnhiv: flag
@@ -72,14 +84,17 @@ echo "no cleanup": $no_cleanup
 
 buildUbuntuPackage=1
 cp -r "$(pwd)" "$(pwd)"/../staging
+
+set_package_version "$version" "$releases" "$(pwd)"/../staging/package/PKGBUILD
+
 if [ $ubuntu = true ]; then
-  build_package "ubuntu" registry.dev.zextras.com/jenkins/pacur/ubuntu-20.04:v1 $version
+  build_package "ubuntu" registry.dev.zextras.com/jenkins/pacur/ubuntu-20.04:v1 "$version"
   buildUbuntuPackage=$?
 fi
 
 buildRockyPackage=1
 if [ $rocky8 = true ]; then
-  build_package "rocky" registry.dev.zextras.com/jenkins/pacur/rocky-8:v1 $version
+  build_package "rocky" registry.dev.zextras.com/jenkins/pacur/rocky-8:v1 "$version"
   buildRockyPackage=$?
 fi
 
@@ -89,7 +104,7 @@ if [ $buildUbuntuPackage = 0 ]; then
   echo "Ubuntu build completed successfully"
   if [ $install = true ]; then
     echo "Installing package for ubuntu.."
-    install_package "carbonio-preview-ce" $version "Ubuntu"
+    install_package "carbonio-preview-ce" "$version" "$releases" "Ubuntu"
     installUbuntuPackage=$?
   fi
 fi
@@ -99,7 +114,7 @@ if [ $buildRockyPackage = 0 ]; then
   echo "Rocky build completed successfully"
   if [ $install = true ]; then
     echo "Installing package for rocky8.."
-    install_package "carbonio-preview-ce" $version "Rocky"
+    install_package "carbonio-preview-ce" "$version" "$releases" "Rocky"
     installRockyPackage=$?
   fi
 fi
